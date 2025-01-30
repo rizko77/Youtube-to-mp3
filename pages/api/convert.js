@@ -1,59 +1,30 @@
-import { spawn } from "child_process";
-
-export default function handler(req, res) {
+export default async function handler(req, res) {
+  // Memastikan hanya menerima permintaan GET
   if (req.method !== "GET") {
-    console.error("Method Not Allowed");
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
-  const { url } = req.query;
+  const { url } = req.query; // Mengambil URL dari query parameter
   if (!url) {
-    console.error("Invalid YouTube URL");
     return res.status(400).json({ error: "Invalid YouTube URL" });
   }
 
-  const ytDlpInfo = spawn("yt-dlp", ["-e", url]);
+  try {
+    // Mengirim permintaan ke API YTMP3.cc
+    const apiUrl = `https://ytmp3.cc/api/conversion?url=${encodeURIComponent(url)}`;
+    
+    const response = await fetch(apiUrl);
+    const data = await response.json();
 
-  let videoTitle = "";
-
-  ytDlpInfo.stdout.on("data", (data) => {
-    videoTitle += data.toString();
-  });
-
-  ytDlpInfo.stderr.on("data", (data) => {
-    console.error(`yt-dlp info stderr: ${data}`);
-  });
-
-  ytDlpInfo.on("close", (code) => {
-    if (code !== 0) {
-      console.error(`yt-dlp info process exited with code: ${code}`);
-      return res.status(500).json({ error: "Failed to fetch video title" });
+    // Memeriksa apakah respons dari API berhasil
+    if (!response.ok) {
+      return res.status(500).json({ error: data.error || "Failed to convert video" });
     }
 
-    videoTitle = videoTitle.trim();
-    const fileName = `${videoTitle}.mp3`;
-
-    const ytDlp = spawn("yt-dlp", ["-x", "--audio-format", "mp3", "-o", "-", url]);
-
-    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-    res.setHeader("Content-Type", "audio/mpeg");
-
-    ytDlp.stdout.pipe(res);
-
-    ytDlp.stderr.on("data", (data) => {
-      console.error(`yt-dlp conversion stderr: ${data}`);
-    });
-
-    ytDlp.on("close", (code) => {
-      if (code !== 0) {
-        console.error(`yt-dlp conversion process exited with code: ${code}`);
-        return res.status(500).json({ error: "Failed to convert video" });
-      }
-    });
-  });
-
-  ytDlpInfo.on("error", (err) => {
-    console.error(`Failed to start yt-dlp: ${err}`);
-    return res.status(500).json({ error: "Internal Server Error" });
-  });
+    // Mengembalikan data yang diterima dari API
+    res.status(200).json(data);
+  } catch (error) {
+    console.error("Error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
 }
