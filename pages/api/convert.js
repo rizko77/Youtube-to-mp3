@@ -10,12 +10,10 @@ export default function handler(req, res) {
     return res.status(400).json({ error: "Invalid YouTube URL" });
   }
 
-  // Mengambil metadata video menggunakan yt-dlp untuk mendapatkan judul
-  const ytDlpInfo = spawn("yt-dlp", ["-e", url]); // "-e" untuk hanya mengambil judul video
+  const ytDlpInfo = spawn("yt-dlp", ["-e", url]);
 
   let videoTitle = "";
 
-  // Mendapatkan judul video dari output yt-dlp
   ytDlpInfo.stdout.on("data", (data) => {
     videoTitle += data.toString();
   });
@@ -29,18 +27,29 @@ export default function handler(req, res) {
       return res.status(500).json({ error: "Failed to fetch video title" });
     }
 
-    // Menghilangkan karakter newline atau spasi berlebih
     videoTitle = videoTitle.trim();
-
-    // Mendefinisikan nama file dengan judul video yang diperoleh
     const fileName = `${videoTitle}.mp3`;
 
-    // Menyiapkan proses download
     const ytDlp = spawn("yt-dlp", ["-x", "--audio-format", "mp3", "-o", "-", url]);
 
     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
     res.setHeader("Content-Type", "audio/mpeg");
 
     ytDlp.stdout.pipe(res);
+
+    ytDlp.stderr.on("data", (data) => {
+      console.error(`stderr: ${data}`);
+    });
+
+    ytDlp.on("close", (code) => {
+      if (code !== 0) {
+        return res.status(500).json({ error: "Failed to convert video" });
+      }
+    });
+  });
+
+  ytDlpInfo.on("error", (err) => {
+    console.error(`Failed to start yt-dlp: ${err}`);
+    return res.status(500).json({ error: "Internal Server Error" });
   });
 }
